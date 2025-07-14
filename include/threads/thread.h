@@ -95,6 +95,8 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
+	int64_t wakeup_tick;				/* sleep 상태가 끝나는 틱 */
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -125,6 +127,10 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+int64_t get_next_wakeup_tick();
+void thread_sleep(int64_t wakeup_tick);
+void thread_wake(int64_t ticks);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

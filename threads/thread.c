@@ -24,9 +24,20 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* sleep 중인 프로세스의 리스트 */
+/*
+ * timer_sleep은 자기 스레드를 이 리스트에 포함시켜야 함 (thread_sleep)
+ * timer_interrupt는 next_wakeup_tick이 지나면 이 리스트를 확인해야 함 (thread_wake)
+ */
+static struct list sleep_list;
+/* 다음 thread_wake를 실행하는 틱 */
+int64_t next_wakeup_tick;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -62,6 +73,10 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+
+int64_t get_next_wakeup_tick();
+void thread_sleep(int64_t wakeup_tick);
+void thread_wake(int64_t ticks);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -108,6 +123,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -306,6 +322,55 @@ thread_yield (void) {
 		list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
+}
+
+/* 다음으로 thread_wake가 실행되어야 하는 틱을 반환 */
+int64_t get_next_wakeup_tick(){
+	return next_wakeup_tick;
+}
+
+/* 스레드를 wakeup_tick까지 sleep_list에서 대기하도록 함 */
+void thread_sleep(int64_t wakeup_tick){
+	struct thread *curr = thread_current();
+
+	ASSERT(curr != idle_thread);
+	
+	/* 인터럽트 블록 */
+    enum intr_level old_level;
+    old_level = intr_disable();
+
+	/* next_wakeup_tick과 스레드 갱신, 스레드를 리스트에 push */
+	next_wakeup_tick = MIN(next_wakeup_tick, wakeup_tick);
+	curr -> wakeup_tick = wakeup_tick;
+    list_push_back(&sleep_list, &curr->elem);
+
+	/* 스레드, 인터럽트 블록 */
+    thread_block();
+    intr_set_level(old_level);
+}
+
+/* sleep_list에서 wakeup_tick이 지난 스레드를 ready_list에 넣음(thread_unblock)
+ * 리스트의 원소가 하나만 남은 경우 next_wakeup_tick은 INT64_MAX가 됨 */
+void thread_wake(int64_t ticks){
+	next_wakeup_tick = INT64_MAX;
+
+    struct list_elem *list_curr = list_begin(&sleep_list);
+    struct thread *th;
+
+    while (list_curr != list_end(&sleep_list)) {
+        th = list_entry(list_curr, struct thread, elem);
+
+		/* wake해야 하는 스레드 */
+        if (ticks >= th->wakeup_tick) {
+            list_curr = list_remove(&th->elem);
+            thread_unblock(th);
+        }
+		/* 아직 더 기다려야 하는 스레드 -  next_wakeup_tick 갱신 */
+		else {
+            next_wakeup_tick = MIN(next_wakeup_tick, th->wakeup_tick);
+            list_curr = list_next(list_curr);
+        }
+    }
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
