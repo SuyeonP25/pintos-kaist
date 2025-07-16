@@ -226,6 +226,10 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	/* 생성한 스레드가 자기보다 우선순위가 높은 경우 점유 반환 */
+	if (t->priority > thread_current()->priority)
+		thread_yield();
+
 	return tid;
 }
 
@@ -396,6 +400,9 @@ static bool compare_thread_priority(struct list_elem *a, struct list_elem *b, vo
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
+	/* 우선순위 변화를 반영하기 위해 일단 점유 반환(다시 확인 필요) */
+	thread_yield();
 }
 
 /* Returns the current thread's priority. */
