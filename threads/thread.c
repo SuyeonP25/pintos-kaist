@@ -79,7 +79,7 @@ static bool compare_thread_wakeup_tick(struct list_elem *a, struct list_elem *b,
 void thread_sleep(int64_t wakeup_tick);
 void thread_wake(int64_t ticks);
 
-static bool compare_thread_priority(struct list_elem *a, struct list_elem *b, void *aux);
+bool compare_thread_priority(struct list_elem *a, struct list_elem *b, void *aux);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -390,7 +390,7 @@ void thread_wake(int64_t ticks){
 /* list_insert_ordered 사용 시 우선순위 비교를 위한 compare 함수
  * 스레드 unblock, yield 시 우선순위 고려 필요
  */
-static bool compare_thread_priority(struct list_elem *a, struct list_elem *b, void *aux){
+bool compare_thread_priority(struct list_elem *a, struct list_elem *b, void *aux){
 	struct thread *thread_a = list_entry(a, struct thread, elem);
 	struct thread *thread_b = list_entry(b, struct thread, elem);
 	return thread_a->priority > thread_b->priority;
