@@ -75,6 +75,7 @@ static void schedule (void);
 static tid_t allocate_tid (void);
 
 int64_t get_next_wakeup_tick();
+static bool compare_thread_wakeup_tick(struct list_elem *a, struct list_elem *b, void *aux);
 void thread_sleep(int64_t wakeup_tick);
 void thread_wake(int64_t ticks);
 
@@ -331,6 +332,13 @@ int64_t get_next_wakeup_tick(){
 	return next_wakeup_tick;
 }
 
+/* list_insert_ordered 사용 시 wakeup_tick 비교를 위한 compare 함수 */
+static bool compare_thread_wakeup_tick(struct list_elem *a, struct list_elem *b, void *aux){
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+	return thread_a->wakeup_tick < thread_b->wakeup_tick;
+}
+
 /* 스레드를 wakeup_tick까지 sleep_list에서 대기하도록 함 */
 void thread_sleep(int64_t wakeup_tick){
 	struct thread *curr = thread_current();
@@ -344,9 +352,9 @@ void thread_sleep(int64_t wakeup_tick){
 	/* next_wakeup_tick과 스레드 갱신, 스레드를 리스트에 push */
 	next_wakeup_tick = MIN(next_wakeup_tick, wakeup_tick);
 	curr -> wakeup_tick = wakeup_tick;
-    list_push_back(&sleep_list, &curr->elem);
+    list_insert_ordered(&sleep_list, &curr->elem, compare_thread_wakeup_tick, NULL);
 
-	/* 스레드, 인터럽트 블록 */
+	/* 스레드 블록, 인터럽트 레벨 원위치 */
     thread_block();
     intr_set_level(old_level);
 }
@@ -367,10 +375,10 @@ void thread_wake(int64_t ticks){
             list_curr = list_remove(&th->elem);
             thread_unblock(th);
         }
-		/* 아직 더 기다려야 하는 스레드 -  next_wakeup_tick 갱신 */
+		/* 아직 더 기다려야 하는 스레드 -  next_wakeup_tick 갱신 및 반복문 종료 */
 		else {
-            next_wakeup_tick = MIN(next_wakeup_tick, th->wakeup_tick);
-            list_curr = list_next(list_curr);
+            next_wakeup_tick = th->wakeup_tick;
+			break;
         }
     }
 }
