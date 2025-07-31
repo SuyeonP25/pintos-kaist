@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,21 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+/* 프로세스마다 파일 디스크립터를 관리하기 위한 구조체 */
+struct fd_table {
+	int fd_next;
+	int fd_limit;
+	struct fd_node **fd_node;
+};
+
+struct child_state {
+	tid_t cheild_tid;
+	bool is_dying;
+	int exit_state;
+	struct thread *cheild_ptr;
+	struct list_elem elem;
+};
 
 /* A kernel thread or user process.
  *
@@ -89,17 +105,30 @@ struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
+	int64_t awake_ticks;
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
-	int64_t wakeup_tick;				/* sleep 상태가 끝나는 틱 */
-
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	struct fd_table fd_table;
+
+	struct file *current_file;
+
+	struct thread* process_parent;
+	struct list process_child_list;
+	
+	struct semaphore exit_sema;
+	
+	struct intr_frame fork_tf;
+	struct semaphore fork_sema;
+	bool fork_success;
+
+	int exit_status;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -127,12 +156,8 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
-
-int64_t get_next_wakeup_tick();
-void thread_sleep(int64_t wakeup_tick);
-void thread_wake(int64_t ticks);
-
-bool compare_thread_priority(struct list_elem *a, struct list_elem *b, void *aux);
+void thread_sleep (int64_t alarm_ticks);
+void thread_wakeup (int64_t current_ticks);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -140,6 +165,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_maybe_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
