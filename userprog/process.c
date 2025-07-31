@@ -50,6 +50,9 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	char *save_ptr;
+	strtok_r(file_name, " ", &save_ptr);
+
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -176,13 +179,52 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	/* 인자 패싱 - 토큰화 */
+	char *token, *save_ptr;
+	char *argv[30];
+	uint64_t argc = 0;
+
+	/* argv[0]        : 파일명
+	 * argv[1] ~ NULL : 인자
+	 */
+	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
+		token = strtok_r(NULL, " ", &save_ptr))
+	{
+		argv[argc] = token;
+		argc++;
+	}
+
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (argv[0], &_if);
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
+
+	/* 인자 패싱 - 스택에 저장 */
+	uint64_t arg_length;
+	char *arg_addr[30];
+
+	for (int i = argc - 1; i >= 0; i--){
+		arg_length = strlen(argv[i]) + 1;		// NULL 포함
+		_if.rsp = _if.rsp - arg_length;
+		memcpy(&(_if.rsp), argv[i], arg_length);
+		arg_addr[i] = _if.rsp;
+	}
+
+	while (_if.rsp % 8 != 0) {					// 정렬 조건
+		_if.rsp--;
+		memset(&(_if.rsp), 0, sizeof(uint8_t));	// 패딩
+	}
+
+	_if.rsp -= sizeof(char *);					// return addr
+	memset(&(_if.rsp), 0, sizeof(char *));
+
+	for (int i = argc -1; i >= 0; i--){
+		_if.rsp -= sizeof(char *);
+		memset(&(_if.rsp), &arg_addr[i], sizeof(char *));
+	} 
 
 	/* Start switched process. */
 	do_iret (&_if);
