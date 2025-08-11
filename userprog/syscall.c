@@ -193,31 +193,7 @@ sys_close (int fd){
 
 void *
 sys_mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
-	/* check 1 : addr(0이 아닌 유저 영역), length의 유효성 */
-	if (addr == NULL || is_kernel_vaddr(addr) || length == 0)
-		return NULL;
-
-	/* check 2 : addr이 page-align 됨 */
-	if (pg_round_down(addr) != addr)
-		return NULL;
-
-	/* check 3 : 기존 페이지와 겹치지 않음 */
-	if (spt_find_page(&thread_current()->spt, addr) != NULL)
-		return NULL;
-	
-	/* check 4 : 파일이 stdin/out이 아님 */
-	if (fd == FD_STDIN || fd == FD_STDOUT)
-		return NULL;
-
-	struct file *file = process_get_file(fd);
-	if (file == NULL)
-		return NULL;
-
-	/* check 5 : 파일의 크기가 0인지 */
-	if (file_length(file) == 0)
-		return NULL;
-	
-	return do_mmap(addr, length, writable, file, offset);
+	return process_mmap(addr, length, writable, fd, offset);
 }
 
 void
